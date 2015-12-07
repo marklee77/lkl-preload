@@ -19,8 +19,7 @@
 
 #include <dlfcn.h>
 
-void printk(const char *str, int len)
-{
+void printk(const char *str, int len) {
     int ret __attribute__((unused));
     ret = write(STDOUT_FILENO, str, len);
 }
@@ -39,7 +38,7 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
     unsigned int disk_id;
     long ret;
 
-    //fprintf(stderr, "PRELOAD: __libc_start_main\n");
+    fprintf(stderr, "PRELOAD: __libc_start_main\n");
 
     orig_open = dlsym(RTLD_NEXT, "open");
 
@@ -76,8 +75,8 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
 }
 
 void exit(int status) {
-    void (*orig_exit)(int) __attribute__ ((noreturn));
-    //fprintf(stderr, "PRELOAD: _exit\n");
+    void (*orig_exit)(int) __attribute__((noreturn));
+    fprintf(stderr, "PRELOAD: exit\n");
     orig_exit = dlsym(RTLD_NEXT, "exit");
     close(bs.fd);
     lkl_sys_halt();
@@ -86,18 +85,17 @@ void exit(int status) {
 
 int open(const char *subpath, int flags, ...) {
     char path[PATH_MAX];
-    fprintf(stderr, "PRELOAD: open\n");
     snprintf(path, sizeof(path), "%s/%s", mpoint, subpath);
-    //fprintf(stderr, "PRELOAD: open %s %s\n", subpath, path);
+    fprintf(stderr, "PRELOAD: open %s %s\n", subpath, path);
     return lkl_sys_open(path, LKL_O_RDONLY, 0);
 }
 
 ssize_t read(int fd, void *buf, size_t count) {
-    //fprintf(stderr, "PRELOAD: read\n");
+    fprintf(stderr, "PRELOAD: read\n");
     return lkl_sys_read(fd, buf, count);
 }
 
 int fstat(int fd, struct stat *buf) {
-    //fprintf(stderr, "PRELOAD: fstat\n");
+    fprintf(stderr, "PRELOAD: fstat\n");
     return 0;
 }
