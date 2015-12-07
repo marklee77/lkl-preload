@@ -61,7 +61,9 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
     lkl_host_ops.print = NULL;
     lkl_start_kernel(&lkl_host_ops, 100 * 1024 * 1024, "");
 
-    ret = lkl_mount_dev(disk_id, "ext2", LKL_MS_RDONLY, NULL,
+    lkl_sys_mknod("/dev/null", 0666, makedev(1,3));
+
+    ret = lkl_mount_dev(disk_id, "ext2", 0, NULL,
                         mpoint, sizeof(mpoint));
     if (ret) {
         fprintf(stderr, "can't mount disk: %s\n", lkl_strerror(ret));
@@ -161,5 +163,10 @@ ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
 
 // opendir, closedir, readdir64, mkdir, chdir 
 
-// write, writev, pwrite64
+// write, writev
+
+ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
+    //fprintf(stderr, "PRELOAD: pwrite64 %s\n", buf);    
+    return lkl_sys_pwrite64(fd, buf, count, offset);
+}
 
