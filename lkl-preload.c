@@ -58,7 +58,7 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
     }
     disk_id = ret;
 
-    lkl_host_ops.print = printk;
+    lkl_host_ops.print = NULL;
     lkl_start_kernel(&lkl_host_ops, 100 * 1024 * 1024, "");
 
     ret = lkl_mount_dev(disk_id, "ext2", LKL_MS_RDONLY, NULL,
@@ -83,11 +83,68 @@ void exit(int status) {
     orig_exit(status);
 }
 
-int open(const char *subpath, int flags, ...) {
-    char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/%s", mpoint, subpath);
-    fprintf(stderr, "PRELOAD: open %s %s\n", subpath, path);
-    return lkl_sys_open(path, LKL_O_RDONLY, 0);
+int open(const char *path, int flags, ...) {
+    char fullpath[PATH_MAX];
+    int lkl_flags = 0;
+
+    if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
+        !fnmatch("/sys/*", path, FNM_PATHNAME)) {
+        snprintf(fullpath, sizeof(fullpath), "%s", path);
+    } else {
+        while('/' == *path) path++;
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", mpoint, path);
+    }
+    
+    lkl_flags |= (flags & O_RDONLY) ? LKL_O_RDONLY : 0;
+    lkl_flags |= (flags & O_WRONLY) ? LKL_O_WRONLY : 0;
+    lkl_flags |= (flags & O_RDWR) ? LKL_O_RDWR : 0;
+    lkl_flags |= (flags & O_CREAT) ? LKL_O_CREAT : 0;
+    lkl_flags |= (flags & O_EXCL) ? LKL_O_EXCL : 0;
+    lkl_flags |= (flags & O_NOCTTY) ? LKL_O_NOCTTY : 0;
+    lkl_flags |= (flags & O_TRUNC) ? LKL_O_TRUNC : 0;
+    lkl_flags |= (flags & O_APPEND) ? LKL_O_APPEND : 0;
+    lkl_flags |= (flags & O_NONBLOCK) ? LKL_O_NONBLOCK : 0;
+    lkl_flags |= (flags & O_DSYNC) ? LKL_O_DSYNC : 0;
+    lkl_flags |= (flags & FASYNC) ? LKL_FASYNC : 0;
+    lkl_flags |= (flags & O_DIRECT) ? LKL_O_DIRECT : 0;
+    lkl_flags |= (flags & O_LARGEFILE) ? LKL_O_LARGEFILE : 0;
+    lkl_flags |= (flags & O_DIRECTORY) ? LKL_O_DIRECTORY : 0;
+    lkl_flags |= (flags & O_NOFOLLOW) ? LKL_O_NOFOLLOW : 0;
+    lkl_flags |= (flags & O_NOATIME) ? LKL_O_NOATIME : 0;
+    lkl_flags |= (flags & O_CLOEXEC) ? LKL_O_CLOEXEC : 0;
+
+    fprintf(stderr, "PRELOAD: open %s flags: 0%07o/0%07o\n", fullpath, flags, lkl_flags);
+
+    return lkl_sys_open(fullpath, LKL_O_RDONLY, 0);
+}
+
+int close(int fd) {
+    fprintf(stderr, "PRELOAD: close\n");
+    return lkl_sys_close(fd);
+}
+
+int __fxstat64(int ver, int fd, struct stat64 *buf) {
+    struct lkl_stat lkl_stat;
+    int ret;
+    printf("PRELOAD: __fxstat64\n");
+    ret = lkl_sys_fstat(fd, &lkl_stat);
+    buf->st_dev = lkl_stat.st_dev;
+    buf->st_ino = lkl_stat.st_ino;
+    buf->st_mode = lkl_stat.st_mode;
+    buf->st_nlink = lkl_stat.st_nlink;
+    buf->st_uid = lkl_stat.st_uid;
+    buf->st_gid = lkl_stat.st_gid;
+    buf->st_rdev = lkl_stat.st_rdev;
+    buf->st_size = lkl_stat.st_size;
+    buf->st_blksize = lkl_stat.st_blksize;
+    buf->st_blocks = lkl_stat.st_blocks;
+    buf->st_atim.tv_sec = lkl_stat.st_atime;;
+    buf->st_atim.tv_nsec = lkl_stat.st_atime_nsec;
+    buf->st_mtim.tv_sec = lkl_stat.st_mtime;
+    buf->st_mtim.tv_nsec = lkl_stat.st_mtime_nsec;
+    buf->st_ctim.tv_sec = lkl_stat.st_ctime;
+    buf->st_ctim.tv_nsec = lkl_stat.st_ctime_nsec;
+    return ret;
 }
 
 ssize_t read(int fd, void *buf, size_t count) {
@@ -95,7 +152,14 @@ ssize_t read(int fd, void *buf, size_t count) {
     return lkl_sys_read(fd, buf, count);
 }
 
-int fstat(int fd, struct stat *buf) {
-    fprintf(stderr, "PRELOAD: fstat\n");
-    return 0;
+ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
+    fprintf(stderr, "PRELOAD: pread64\n");    
+    return lkl_sys_pread64(fd, buf, count, offset);
 }
+
+// readdir64, readv
+
+// opendir, closedir, readdir64, mkdir, chdir 
+
+// write, writev, pwrite64
+
