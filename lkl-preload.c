@@ -19,33 +19,43 @@
 
 #include <dlfcn.h>
 
-void printk(const char *str, int len) {
-    int ret __attribute__((unused));
-    ret = write(STDOUT_FILENO, str, len);
-}
 
+// globals
 union lkl_disk_backstore bs;
 unsigned int disk_id;
 char mpoint[32];
 
+
+// FIXME: do not export
+void printk(const char *str, int len) {
+    int ret __attribute__((unused));
+    if (NULL != getenv("LKL_PRELOAD_VERBOSE")) {
+        ret = write(STDERR_FILENO, str, len);
+    }
+}
+
+
 int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
                       void (*init)(void), void (*fini)(void),
                       void (*rtld_fini)(void), void *stack_end) {
-    int (*orig_libc_start_main)(int (*)(int,char **,char **), int, char **,
-                                    void (*)(void), void (*)(void),
-                                    void (*)(void), void *);
 
-    int (*orig_open)(const char *, int, ...);
+    int (*orig_libc_start_main)(int (*)(int,char **,char **), int, char **,
+                                void (*)(void), void (*)(void),
+                                void (*)(void), void *) = 
+            dlsym(RTLD_NEXT, "__libc_start_main");
+
+    int (*orig_open)(const char *, int, ...) = dlsym(RTLD_NEXT, "open");
+
+    char *disk = getenv("LKL_PRELOAD_DISK");
     long ret;
 
-    fprintf(stderr, "PRELOAD: __libc_start_main\n");
+    if (NULL == disk) {
+        disk = "./disk.img";
+    }
 
-    orig_open = dlsym(RTLD_NEXT, "open");
-
-    bs.fd = orig_open("./disk.img", O_RDWR);
+    bs.fd = orig_open(disk, O_RDWR);
     if (bs.fd < 0) {
-        fprintf(stderr, "can't open fsimg %s: %s\n", "./hello.img",
-            strerror(errno));
+        fprintf(stderr, "can't open disk %s: %s\n", disk, strerror(errno));
         exit(1);
     }
 
@@ -53,12 +63,11 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
     if (ret < 0) {
         fprintf(stderr, "can't add disk: %s\n", lkl_strerror(ret));
         close(bs.fd);
-        lkl_sys_halt();
-        exit(ret);
+        exit(1);
     }
     disk_id = ret;
 
-    lkl_host_ops.print = NULL;
+    lkl_host_ops.print = printk;
     lkl_start_kernel(&lkl_host_ops, 100 * 1024 * 1024, "");
 
     lkl_sys_mknod("/dev/null", 0666, makedev(1,3));
@@ -72,8 +81,9 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
         exit(ret);
     }
 
-    orig_libc_start_main = dlsym(RTLD_NEXT, "__libc_start_main");
-    return orig_libc_start_main(main, argc, argv, init, fini, rtld_fini, stack_end);
+    fprintf(stderr, "PRELOAD: __libc_start_main\n");
+    return orig_libc_start_main(main, argc, argv, init, 
+                                fini, rtld_fini, stack_end);
 }
 
 void exit(int status) {
