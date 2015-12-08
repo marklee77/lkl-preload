@@ -25,6 +25,7 @@ void printk(const char *str, int len) {
 }
 
 union lkl_disk_backstore bs;
+unsigned int disk_id;
 char mpoint[32];
 
 int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
@@ -35,14 +36,13 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
                                     void (*)(void), void *);
 
     int (*orig_open)(const char *, int, ...);
-    unsigned int disk_id;
     long ret;
 
     fprintf(stderr, "PRELOAD: __libc_start_main\n");
 
     orig_open = dlsym(RTLD_NEXT, "open");
 
-    bs.fd = orig_open("./disk.img", O_RDONLY);
+    bs.fd = orig_open("./disk.img", O_RDWR);
     if (bs.fd < 0) {
         fprintf(stderr, "can't open fsimg %s: %s\n", "./hello.img",
             strerror(errno));
@@ -63,8 +63,8 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
 
     lkl_sys_mknod("/dev/null", 0666, makedev(1,3));
 
-    ret = lkl_mount_dev(disk_id, "ext2", 0, NULL,
-                        mpoint, sizeof(mpoint));
+    ret = lkl_mount_dev(disk_id, "ext2", 0, NULL, mpoint, sizeof(mpoint));
+
     if (ret) {
         fprintf(stderr, "can't mount disk: %s\n", lkl_strerror(ret));
         close(bs.fd);
@@ -78,9 +78,12 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
 
 void exit(int status) {
     void (*orig_exit)(int) __attribute__((noreturn));
+    int (*orig_close)(int);
     fprintf(stderr, "PRELOAD: exit\n");
     orig_exit = dlsym(RTLD_NEXT, "exit");
-    close(bs.fd);
+    orig_close = dlsym(RTLD_NEXT, "close");
+    lkl_umount_dev(disk_id, 0, 1000);
+    orig_close(bs.fd);
     lkl_sys_halt();
     orig_exit(status);
 }
@@ -117,7 +120,7 @@ int open(const char *path, int flags, ...) {
 
     fprintf(stderr, "PRELOAD: open %s flags: 0%07o/0%07o\n", fullpath, flags, lkl_flags);
 
-    return lkl_sys_open(fullpath, LKL_O_RDONLY, 0);
+    return lkl_sys_open(fullpath, lkl_flags, LKL_S_IRWXU);
 }
 
 int close(int fd) {
@@ -155,9 +158,11 @@ ssize_t read(int fd, void *buf, size_t count) {
 }
 
 ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
-    fprintf(stderr, "PRELOAD: pread64\n");    
+    fprintf(stderr, "PRELOAD: pread64 %d, %zd, %zd\n", fd, count, offset);    
     return lkl_sys_pread64(fd, buf, count, offset);
 }
+
+// lseek64
 
 // readdir64, readv
 
@@ -166,7 +171,14 @@ ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
 // write, writev
 
 ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
-    //fprintf(stderr, "PRELOAD: pwrite64 %s\n", buf);    
-    return lkl_sys_pwrite64(fd, buf, count, offset);
-}
+    ssize_t ret = lkl_sys_pwrite64(fd, buf, count, offset);
 
+    // FIXME: is this documented anywhere?
+    if (0 > ret) {
+        errno = -ret;
+        ret = -1;
+    }
+
+    fprintf(stderr, "PRELOAD: pwrite64 %d, %zd, %zd, %zd, %d\n", fd, count, offset, ret, errno);    
+    return ret;
+}

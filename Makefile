@@ -11,5 +11,14 @@ lkl-preload.o: lkl-preload.c Makefile
 	    -fno-strict-aliasing -fPIC -D_FILE_OFFSET_BITS=64 \
 	    -c -o $@ $<
 
+simplewrite: simplewrite.o $(LKL_LIB_PATH)/liblkl.so
+	gcc -o $@ $^ -lpthread -lrt -ldl
+
+simplewrite.o: simplewrite.c Makefile
+	gcc -I$(LKL_INCLUDE_PATH) -Wall -g -O2 \
+	    -Wextra -Wno-unused-parameter -Wno-missing-field-initializers \
+	    -fno-strict-aliasing -fPIC -D_FILE_OFFSET_BITS=64 \
+	    -c -o $@ $<
+
 clean:
 	rm -f *.o *.so
