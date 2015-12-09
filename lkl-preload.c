@@ -156,6 +156,7 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
 }
 
 
+// FIXME: better path mapping code for open, opendir, mkdir, chdir
 int open(const char *path, int flags, ...) {
 
     char fullpath[PATH_MAX];
@@ -301,15 +302,23 @@ off64_t lseek64(int fd, off64_t offset, int whence) {
 }
 
 
-// FIXME: need subpath checking as with open above...
-DIR *opendir(const char *name) {
+DIR *opendir(const char *path) {
     
+    char fullpath[PATH_MAX];
     DIR *dir;
     int err;
 
-    fprintf(stderr, "PRELOAD: opendir %s\n", name);    
+    fprintf(stderr, "PRELOAD: opendir %s\n", path);
 
-    dir = (DIR *)lkl_opendir(name, &err);
+    if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
+        !fnmatch("/sys/*", path, FNM_PATHNAME)) {
+        snprintf(fullpath, sizeof(fullpath), "%s", path);
+    } else {
+        while('/' == *path) path++;
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", mpoint, path);
+    }
+ 
+    dir = (DIR *)lkl_opendir(fullpath, &err);
     if (NULL == dir) {
         errno = err;
     }
@@ -338,18 +347,37 @@ struct dirent64 *readdir64(DIR *dirp) {
 }
 
 
-// FIXME: need subpath checking as with open above...
-int mkdir(const char *pathname, mode_t mode) {
+int mkdir(const char *path, mode_t mode) {
 
-    fprintf(stderr, "PRELOAD: mkdir\n");    
+    char fullpath[PATH_MAX];
+
+    fprintf(stderr, "PRELOAD: mkdir %s\n", path);
     
-    return lkl_sys_mkdir(pathname, mode);
+    if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
+        !fnmatch("/sys/*", path, FNM_PATHNAME)) {
+        snprintf(fullpath, sizeof(fullpath), "%s", path);
+    } else {
+        while('/' == *path) path++;
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", mpoint, path);
+    }
+ 
+    return lkl_sys_mkdir(fullpath, mode);
 }
 
 int chdir(const char *path) {
 
-    fprintf(stderr, "PRELOAD: mkdir\n");    
+    char fullpath[PATH_MAX];
 
-    return lkl_sys_chdir(path);
+    fprintf(stderr, "PRELOAD: chdir %s\n", path);
+
+    if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
+        !fnmatch("/sys/*", path, FNM_PATHNAME)) {
+        snprintf(fullpath, sizeof(fullpath), "%s", path);
+    } else {
+        while('/' == *path) path++;
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", mpoint, path);
+    }
+ 
+    return lkl_sys_chdir(fullpath);
 
 }
