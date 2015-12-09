@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <libgen.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -101,6 +102,9 @@ void exit(int status) {
 int open(const char *path, int flags, ...) {
     char fullpath[PATH_MAX];
     int lkl_flags = 0;
+    
+    va_list args;
+    mode_t mode = 0;
 
     if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
         !fnmatch("/sys/*", path, FNM_PATHNAME)) {
@@ -128,9 +132,15 @@ int open(const char *path, int flags, ...) {
     lkl_flags |= (flags & O_NOATIME) ? LKL_O_NOATIME : 0;
     lkl_flags |= (flags & O_CLOEXEC) ? LKL_O_CLOEXEC : 0;
 
+    if (flags & O_CREAT) {
+        va_start(args, flags);
+        mode = va_arg(args, mode_t);
+        va_end(args);
+    }
+
     fprintf(stderr, "PRELOAD: open %s flags: 0%07o/0%07o\n", fullpath, flags, lkl_flags);
 
-    return lkl_sys_open(fullpath, lkl_flags, LKL_S_IRWXU);
+    return lkl_sys_open(fullpath, lkl_flags, mode);
 }
 
 int close(int fd) {
