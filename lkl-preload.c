@@ -32,14 +32,18 @@ int (*global_main)(int, char**, char**);
 
 // FIXME: do not export
 void printk(const char *str, int len) {
+
     int ret __attribute__((unused));
+
     if (NULL != getenv("LKL_PRELOAD_VERBOSE")) {
         ret = write(STDERR_FILENO, str, len);
     }
+
 }
 
 
 void lkl_preload_init() {
+
     char *disk = getenv("LKL_PRELOAD_DISK");
     int (*orig_open)(const char *, int, ...) = dlsym(RTLD_NEXT, "open");
     long ret;
@@ -77,20 +81,25 @@ void lkl_preload_init() {
         lkl_sys_halt();
         exit(ret);
     }
+
 }
 
 
 void lkl_preload_cleanup() {
+
     int (*orig_close)(int) = dlsym(RTLD_NEXT, "close");
+
     fprintf(stderr, "PRELOAD: lkl_preload_cleanup \n");
 
     lkl_umount_dev(disk_id, 0, 1000);
     orig_close(bs.fd);
     lkl_sys_halt();
+
 }
 
 
 int main_wrapper(int argc, char ** argv, char **envp) {
+
     int ret;
 
     fprintf(stderr, "PRELOAD: main_wrapper\n");
@@ -104,10 +113,14 @@ int main_wrapper(int argc, char ** argv, char **envp) {
 
 
 void exit(int status) {
+
     void (*orig_exit)(int) __attribute__((noreturn)) = dlsym(RTLD_NEXT, "exit");
-    fprintf(stderr, "PRELOAD: exit\n");
+
+    fprintf(stderr, "PRELOAD: exit %d\n", status);
+
     lkl_preload_cleanup();
     orig_exit(status);
+
 }
 
 
@@ -115,27 +128,35 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
                       void (*init)(void), void (*fini)(void),
                       void (*rtld_fini)(void), void *stack_end) {
 
-    int (*orig_libc_start_main)(int (*)(int,char **,char **), int, char **,
-                                void (*)(void), void (*)(void),
-                                void (*)(void), void *) = 
-            dlsym(RTLD_NEXT, "__libc_start_main");
+    int (*orig_libc_start_main)(
+            int (*)(int,char **,char **), 
+            int, 
+            char **, 
+            void (*)(void), 
+            void (*)(void), 
+            void (*)(void), 
+            void *
+        ) = dlsym(RTLD_NEXT, "__libc_start_main");
+
+    fprintf(stderr, "PRELOAD: __libc_start_main\n");
 
     global_main = main;
 
-    fprintf(stderr, "PRELOAD: __libc_start_main\n");
-    return orig_libc_start_main(main_wrapper, argc, argv, init, 
-                                fini, rtld_fini, stack_end);
+    return orig_libc_start_main(main_wrapper, argc, argv, 
+            init, fini, rtld_fini, stack_end);
+
 }
 
 
-
-
 int open(const char *path, int flags, ...) {
+
     char fullpath[PATH_MAX];
     int lkl_flags = 0;
     
     va_list args;
     mode_t mode = 0;
+
+    fprintf(stderr, "PRELOAD: open %s", path);
 
     if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
         !fnmatch("/sys/*", path, FNM_PATHNAME)) {
@@ -169,23 +190,29 @@ int open(const char *path, int flags, ...) {
         va_end(args);
     }
 
-    fprintf(stderr, "PRELOAD: open %s flags: 0%07o/0%07o\n", fullpath, flags, lkl_flags);
-
     return lkl_sys_open(fullpath, lkl_flags, mode);
+
 }
 
 
 int close(int fd) {
+
     fprintf(stderr, "PRELOAD: close\n");
+
     return lkl_sys_close(fd);
+
 }
 
 
 int __fxstat64(int ver, int fd, struct stat64 *buf) {
+
     struct lkl_stat lkl_stat;
     int ret;
+
     printf("PRELOAD: __fxstat64\n");
+
     ret = lkl_sys_fstat(fd, &lkl_stat);
+
     buf->st_dev = lkl_stat.st_dev;
     buf->st_ino = lkl_stat.st_ino;
     buf->st_mode = lkl_stat.st_mode;
@@ -202,32 +229,43 @@ int __fxstat64(int ver, int fd, struct stat64 *buf) {
     buf->st_mtim.tv_nsec = lkl_stat.st_mtime_nsec;
     buf->st_ctim.tv_sec = lkl_stat.st_ctime;
     buf->st_ctim.tv_nsec = lkl_stat.st_ctime_nsec;
+
     return ret;
+
 }
 
 
 ssize_t read(int fd, void *buf, size_t count) {
+
     fprintf(stderr, "PRELOAD: read\n");
+
     return lkl_sys_read(fd, buf, count);
+
 }
 
 
 ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
-    fprintf(stderr, "PRELOAD: pread64 %d, %zd, %zd\n", fd, count, offset);    
+
+    fprintf(stderr, "PRELOAD: pread64\n");    
+
     return lkl_sys_pread64(fd, buf, count, offset);
+
 }
 
 
 ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
+
     ssize_t ret = lkl_sys_pwrite64(fd, buf, count, offset);
+
+    fprintf(stderr, "PRELOAD: pwrite64\n");    
 
     if (0 > ret) {
         errno = -ret;
         ret = -1;
     }
 
-    fprintf(stderr, "PRELOAD: pwrite64 %d, %zd, %zd, %zd, %d\n", fd, count, offset, ret, errno);    
     return ret;
+
 }
 
 /*
