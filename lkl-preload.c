@@ -36,6 +36,9 @@ void printk(const char *str, int len) {
 }
 
 
+// FIXME: debug environment variable, also use libseccomp to capture system
+// calls
+
 int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
                       void (*init)(void), void (*fini)(void),
                       void (*rtld_fini)(void), void *stack_end) {
@@ -189,13 +192,6 @@ ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
     return lkl_sys_pread64(fd, buf, count, offset);
 }
 
-// lseek64
-
-// readdir64, readv
-
-// opendir, closedir, readdir64, mkdir, chdir 
-
-// write, writev
 
 ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
     ssize_t ret = lkl_sys_pwrite64(fd, buf, count, offset);
@@ -208,3 +204,29 @@ ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
     fprintf(stderr, "PRELOAD: pwrite64 %d, %zd, %zd, %zd, %d\n", fd, count, offset, ret, errno);    
     return ret;
 }
+
+/*
+off_t lseek(int fd, off_t offset, int whence) {
+
+}
+
+DIR *opendir(const char *name) {
+    return NULL;
+}
+
+int closedir(DIR *dirp) {
+    return -1;
+}
+
+int readdir64(DIR *dirp, struct dirent *entry, struct dirent **result) {
+
+}
+
+int mkdir(const char *pathname, mode_t mode) {
+
+}
+
+int chdir(const char *path) {
+
+}
+*/
