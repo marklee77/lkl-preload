@@ -155,11 +155,32 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
 }
 
 
-// FIXME: better path mapping code for open, opendir, mkdir, chdir
-// use realpath...
+// FIXME: realpath wants getcwd...
+// maybe it just makes more sense to mount rootfs?
+void lkl_preload_remap_path(const char *, char *) __attribute__ ((visibility ("hidden")));
+
+void lkl_preload_remap_path(const char *path, char *remapped_path) {
+    
+    char resolved_path[PATH_MAX];
+    char * ret __attribute__((unused));
+
+    ret = realpath(path, resolved_path);
+
+    if (!fnmatch("/dev/*", resolved_path, FNM_PATHNAME) ||
+        !fnmatch("/sys/*", resolved_path, FNM_PATHNAME)) {
+        snprintf(remapped_path, sizeof(char) * PATH_MAX, "%s", resolved_path);
+    } else {
+        snprintf(remapped_path, sizeof(char) * PATH_MAX, "%s/%s", mpoint, resolved_path+1);
+    }
+
+    fprintf(stderr, "PRELOAD: lkl_preload_remap_path %s %s\n", path, remapped_path);
+ 
+}
+
+
 int open(const char *path, int flags, ...) {
 
-    char fullpath[PATH_MAX];
+    char remapped_path[PATH_MAX];
     int lkl_flags = 0;
     
     va_list args;
@@ -167,14 +188,8 @@ int open(const char *path, int flags, ...) {
 
     fprintf(stderr, "PRELOAD: open %s\n", path);
 
-    if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
-        !fnmatch("/sys/*", path, FNM_PATHNAME)) {
-        snprintf(fullpath, sizeof(fullpath), "%s", path);
-    } else {
-        while('/' == *path) path++;
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", mpoint, path);
-    }
-    
+    lkl_preload_remap_path(path, remapped_path);
+ 
     lkl_flags |= (flags & O_RDONLY) ? LKL_O_RDONLY : 0;
     lkl_flags |= (flags & O_WRONLY) ? LKL_O_WRONLY : 0;
     lkl_flags |= (flags & O_RDWR) ? LKL_O_RDWR : 0;
@@ -199,7 +214,7 @@ int open(const char *path, int flags, ...) {
         va_end(args);
     }
 
-    return lkl_sys_open(fullpath, lkl_flags, mode);
+    return lkl_sys_open(remapped_path, lkl_flags, mode);
 
 }
 
@@ -279,11 +294,12 @@ ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
 }
 
 
+/*
 off64_t lseek64(int fd, off64_t offset, int whence) {
 
     int lkl_whence = LKL_SEEK_CUR;
 
-    fprintf(stderr, "PRELOAD: pwrite64\n");    
+    fprintf(stderr, "PRELOAD: lseek64\n");    
 
     switch(whence) {
         case SEEK_SET:
@@ -300,6 +316,7 @@ off64_t lseek64(int fd, off64_t offset, int whence) {
     return lkl_sys_lseek(fd, offset, lkl_whence);
     
 }
+*/
 
 
 DIR *opendir(const char *path) {
