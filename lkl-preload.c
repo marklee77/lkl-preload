@@ -24,13 +24,15 @@
 
 
 // globals
-union lkl_disk_backstore bs;
-unsigned int disk_id;
-char mpoint[32];
-int (*global_main)(int, char**, char**);
+union lkl_disk_backstore bs __attribute__ ((visibility ("hidden")));
+unsigned int disk_id __attribute__ ((visibility ("hidden")));
+char mpoint[32] __attribute__ ((visibility ("hidden")));
+int (*global_main)(int, char**, char**) __attribute__ ((visibility ("hidden")));
 
 
 // FIXME: do not export
+void printk(const char *, int) __attribute__ ((visibility ("hidden")));
+
 void printk(const char *str, int len) {
 
     int ret __attribute__((unused));
@@ -41,6 +43,8 @@ void printk(const char *str, int len) {
 
 }
 
+
+void lkl_preload_init() __attribute__ ((visibility ("hidden")));
 
 void lkl_preload_init() {
 
@@ -85,6 +89,8 @@ void lkl_preload_init() {
 }
 
 
+void lkl_preload_cleanup() __attribute__ ((visibility ("hidden")));
+
 void lkl_preload_cleanup() {
 
     int (*orig_close)(int) = dlsym(RTLD_NEXT, "close");
@@ -98,7 +104,9 @@ void lkl_preload_cleanup() {
 }
 
 
-int main_wrapper(int argc, char ** argv, char **envp) {
+int main_wrapper(int, char **, char **) __attribute__ ((visibility ("hidden")));
+
+int main_wrapper(int argc, char **argv, char **envp) {
 
     int ret;
 
@@ -156,7 +164,7 @@ int open(const char *path, int flags, ...) {
     va_list args;
     mode_t mode = 0;
 
-    fprintf(stderr, "PRELOAD: open %s", path);
+    fprintf(stderr, "PRELOAD: open %s\n", path);
 
     if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
         !fnmatch("/sys/*", path, FNM_PATHNAME)) {
@@ -259,6 +267,7 @@ ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
 
     fprintf(stderr, "PRELOAD: pwrite64\n");    
 
+    // where is this documented?
     if (0 > ret) {
         errno = -ret;
         ret = -1;
@@ -268,28 +277,79 @@ ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
 
 }
 
-/*
-off_t lseek(int fd, off_t offset, int whence) {
 
+off64_t lseek64(int fd, off64_t offset, int whence) {
+
+    int lkl_whence = LKL_SEEK_CUR;
+
+    fprintf(stderr, "PRELOAD: pwrite64\n");    
+
+    switch(whence) {
+        case SEEK_SET:
+            lkl_whence = LKL_SEEK_SET;
+            break;
+        case SEEK_CUR:
+            lkl_whence = LKL_SEEK_CUR;
+            break;
+        case SEEK_END:
+            lkl_whence = LKL_SEEK_END;
+            break;
+    }
+
+    return lkl_sys_lseek(fd, offset, lkl_whence);
+    
 }
 
+
+// FIXME: need subpath checking as with open above...
 DIR *opendir(const char *name) {
-    return NULL;
+    
+    DIR *dir;
+    int err;
+
+    fprintf(stderr, "PRELOAD: opendir %s\n", name);    
+
+    dir = (DIR *)lkl_opendir(name, &err);
+    if (NULL == dir) {
+        errno = err;
+    }
+
+    return dir;
+
 }
 
-int closedir(DIR *dirp) {
-    return -1;
+
+int closedir(DIR *dir) {
+
+    fprintf(stderr, "PRELOAD: closedir\n");    
+
+    // FIXME: check for return -errno as in pwrite
+    return lkl_closedir((struct lkl_dir *)dir);
+
 }
 
-int readdir64(DIR *dirp, struct dirent *entry, struct dirent **result) {
+
+struct dirent64 *readdir64(DIR *dirp) {
+
+    fprintf(stderr, "PRELOAD: readdir64\n");    
+
+    return (struct dirent64 *)lkl_readdir((struct lkl_dir *)dirp);
 
 }
 
+
+// FIXME: need subpath checking as with open above...
 int mkdir(const char *pathname, mode_t mode) {
 
+    fprintf(stderr, "PRELOAD: mkdir\n");    
+    
+    return lkl_sys_mkdir(pathname, mode);
 }
 
 int chdir(const char *path) {
 
+    fprintf(stderr, "PRELOAD: mkdir\n");    
+
+    return lkl_sys_chdir(path);
+
 }
-*/
