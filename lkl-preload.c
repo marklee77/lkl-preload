@@ -30,7 +30,6 @@ char mpoint[32] __attribute__ ((visibility ("hidden")));
 int (*global_main)(int, char**, char**) __attribute__ ((visibility ("hidden")));
 
 
-// FIXME: do not export
 void printk(const char *, int) __attribute__ ((visibility ("hidden")));
 
 void printk(const char *str, int len) {
@@ -157,6 +156,7 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
 
 
 // FIXME: better path mapping code for open, opendir, mkdir, chdir
+// use realpath...
 int open(const char *path, int flags, ...) {
 
     char fullpath[PATH_MAX];
