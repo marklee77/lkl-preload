@@ -1,3 +1,5 @@
+// FIXME: debug environment variable, also use libseccomp to capture system
+// calls
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -25,6 +27,7 @@
 union lkl_disk_backstore bs;
 unsigned int disk_id;
 char mpoint[32];
+int (*global_main)(int, char**, char**);
 
 
 // FIXME: do not export
@@ -36,22 +39,12 @@ void printk(const char *str, int len) {
 }
 
 
-// FIXME: debug environment variable, also use libseccomp to capture system
-// calls
-
-int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
-                      void (*init)(void), void (*fini)(void),
-                      void (*rtld_fini)(void), void *stack_end) {
-
-    int (*orig_libc_start_main)(int (*)(int,char **,char **), int, char **,
-                                void (*)(void), void (*)(void),
-                                void (*)(void), void *) = 
-            dlsym(RTLD_NEXT, "__libc_start_main");
-
-    int (*orig_open)(const char *, int, ...) = dlsym(RTLD_NEXT, "open");
-
+void lkl_preload_init() {
     char *disk = getenv("LKL_PRELOAD_DISK");
+    int (*orig_open)(const char *, int, ...) = dlsym(RTLD_NEXT, "open");
     long ret;
+
+    fprintf(stderr, "PRELOAD: lkl_preload_init \n");
 
     if (NULL == disk) {
         disk = "./disk.img";
@@ -84,25 +77,57 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
         lkl_sys_halt();
         exit(ret);
     }
+}
+
+
+void lkl_preload_cleanup() {
+    int (*orig_close)(int) = dlsym(RTLD_NEXT, "close");
+    fprintf(stderr, "PRELOAD: lkl_preload_cleanup \n");
+
+    lkl_umount_dev(disk_id, 0, 1000);
+    orig_close(bs.fd);
+    lkl_sys_halt();
+}
+
+
+int main_wrapper(int argc, char ** argv, char **envp) {
+    int ret;
+
+    fprintf(stderr, "PRELOAD: main_wrapper\n");
+
+    lkl_preload_init();
+    ret = (*global_main)(argc, argv, envp);
+    lkl_preload_cleanup();
+
+    return ret;
+}
+
+
+void exit(int status) {
+    void (*orig_exit)(int) __attribute__((noreturn)) = dlsym(RTLD_NEXT, "exit");
+    fprintf(stderr, "PRELOAD: exit\n");
+    lkl_preload_cleanup();
+    orig_exit(status);
+}
+
+
+int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
+                      void (*init)(void), void (*fini)(void),
+                      void (*rtld_fini)(void), void *stack_end) {
+
+    int (*orig_libc_start_main)(int (*)(int,char **,char **), int, char **,
+                                void (*)(void), void (*)(void),
+                                void (*)(void), void *) = 
+            dlsym(RTLD_NEXT, "__libc_start_main");
+
+    global_main = main;
 
     fprintf(stderr, "PRELOAD: __libc_start_main\n");
-    return orig_libc_start_main(main, argc, argv, init, 
+    return orig_libc_start_main(main_wrapper, argc, argv, init, 
                                 fini, rtld_fini, stack_end);
 }
 
 
-// FIXME: wrapper for fini?
-void exit(int status) {
-    void (*orig_exit)(int) __attribute__((noreturn));
-    int (*orig_close)(int);
-    fprintf(stderr, "PRELOAD: exit\n");
-    orig_exit = dlsym(RTLD_NEXT, "exit");
-    orig_close = dlsym(RTLD_NEXT, "close");
-    lkl_umount_dev(disk_id, 0, 1000);
-    orig_close(bs.fd);
-    lkl_sys_halt();
-    orig_exit(status);
-}
 
 
 int open(const char *path, int flags, ...) {
