@@ -23,6 +23,9 @@
 #include <dlfcn.h>
 
 
+#define DEBUGMSG if (getenv("LKL_PRELOAD_DEBUG")) fprintf
+
+
 // globals
 union lkl_disk_backstore bs __attribute__ ((visibility ("hidden")));
 unsigned int disk_id __attribute__ ((visibility ("hidden")));
@@ -51,7 +54,7 @@ void lkl_preload_init() {
     int (*orig_open)(const char *, int, ...) = dlsym(RTLD_NEXT, "open");
     long ret;
 
-    fprintf(stderr, "PRELOAD: lkl_preload_init \n");
+    DEBUGMSG(stderr, "PRELOAD: lkl_preload_init \n");
 
     if (NULL == disk) {
         disk = "./disk.img";
@@ -94,7 +97,7 @@ void lkl_preload_cleanup() {
 
     int (*orig_close)(int) = dlsym(RTLD_NEXT, "close");
 
-    fprintf(stderr, "PRELOAD: lkl_preload_cleanup \n");
+    DEBUGMSG(stderr, "PRELOAD: lkl_preload_cleanup \n");
 
     lkl_umount_dev(disk_id, 0, 1000);
     orig_close(bs.fd);
@@ -109,7 +112,7 @@ int main_wrapper(int argc, char **argv, char **envp) {
 
     int ret;
 
-    fprintf(stderr, "PRELOAD: main_wrapper\n");
+    DEBUGMSG(stderr, "PRELOAD: main_wrapper\n");
 
     lkl_preload_init();
     ret = (*global_main)(argc, argv, envp);
@@ -123,7 +126,7 @@ void exit(int status) {
 
     void (*orig_exit)(int) __attribute__((noreturn)) = dlsym(RTLD_NEXT, "exit");
 
-    fprintf(stderr, "PRELOAD: exit %d\n", status);
+    DEBUGMSG(stderr, "PRELOAD: exit %d\n", status);
 
     lkl_preload_cleanup();
     orig_exit(status);
@@ -145,7 +148,7 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv,
             void *
         ) = dlsym(RTLD_NEXT, "__libc_start_main");
 
-    fprintf(stderr, "PRELOAD: __libc_start_main\n");
+    DEBUGMSG(stderr, "PRELOAD: __libc_start_main\n");
 
     global_main = main;
 
@@ -178,7 +181,7 @@ void lkl_preload_remap_path(const char *path, char *remapped_path) {
         snprintf(remapped_path, sizeof(char) * PATH_MAX, "%s/%s", mpoint, resolved_path+i);
     }
 
-    fprintf(stderr, "PRELOAD: lkl_preload_remap_path %s %s\n", path, remapped_path);
+    DEBUGMSG(stderr, "PRELOAD: lkl_preload_remap_path %s %s\n", path, remapped_path);
  
 }
 
@@ -191,7 +194,7 @@ int open(const char *path, int flags, ...) {
     va_list args;
     mode_t mode = 0;
 
-    fprintf(stderr, "PRELOAD: open %s\n", path);
+    DEBUGMSG(stderr, "PRELOAD: open %s\n", path);
 
     lkl_preload_remap_path(path, remapped_path);
  
@@ -226,7 +229,7 @@ int open(const char *path, int flags, ...) {
 
 int close(int fd) {
 
-    fprintf(stderr, "PRELOAD: close\n");
+    DEBUGMSG(stderr, "PRELOAD: close\n");
 
     return lkl_sys_close(fd);
 
@@ -266,7 +269,7 @@ int __fxstat64(int ver, int fd, struct stat64 *buf) {
 
 ssize_t read(int fd, void *buf, size_t count) {
 
-    fprintf(stderr, "PRELOAD: read\n");
+    DEBUGMSG(stderr, "PRELOAD: read\n");
 
     return lkl_sys_read(fd, buf, count);
 
@@ -275,7 +278,7 @@ ssize_t read(int fd, void *buf, size_t count) {
 
 ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
 
-    fprintf(stderr, "PRELOAD: pread64\n");    
+    DEBUGMSG(stderr, "PRELOAD: pread64\n");    
 
     return lkl_sys_pread64(fd, buf, count, offset);
 
@@ -286,7 +289,7 @@ ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
 
     ssize_t ret = lkl_sys_pwrite64(fd, buf, count, offset);
 
-    fprintf(stderr, "PRELOAD: pwrite64\n");    
+    DEBUGMSG(stderr, "PRELOAD: pwrite64\n");    
 
     // where is this documented?
     if (0 > ret) {
@@ -304,7 +307,7 @@ off64_t lseek64(int fd, off64_t offset, int whence) {
 
     int lkl_whence = LKL_SEEK_CUR;
 
-    fprintf(stderr, "PRELOAD: lseek64\n");    
+    DEBUGMSG(stderr, "PRELOAD: lseek64\n");    
 
     switch(whence) {
         case SEEK_SET:
@@ -330,7 +333,7 @@ DIR *opendir(const char *path) {
     DIR *dir;
     int err;
 
-    fprintf(stderr, "PRELOAD: opendir %s\n", path);
+    DEBUGMSG(stderr, "PRELOAD: opendir %s\n", path);
 
     lkl_preload_remap_path(path, remapped_path);
 
@@ -346,7 +349,7 @@ DIR *opendir(const char *path) {
 
 int closedir(DIR *dir) {
 
-    fprintf(stderr, "PRELOAD: closedir\n");    
+    DEBUGMSG(stderr, "PRELOAD: closedir\n");    
 
     // FIXME: check for return -errno as in pwrite
     return lkl_closedir((struct lkl_dir *)dir);
@@ -356,7 +359,7 @@ int closedir(DIR *dir) {
 
 struct dirent64 *readdir64(DIR *dirp) {
 
-    fprintf(stderr, "PRELOAD: readdir64\n");    
+    DEBUGMSG(stderr, "PRELOAD: readdir64\n");    
 
     return (struct dirent64 *)lkl_readdir((struct lkl_dir *)dirp);
 
@@ -367,21 +370,27 @@ int mkdir(const char *path, mode_t mode) {
 
     char remapped_path[PATH_MAX];
 
-    fprintf(stderr, "PRELOAD: mkdir %s\n", path);
+    DEBUGMSG(stderr, "PRELOAD: mkdir %s\n", path);
 
     lkl_preload_remap_path(path, remapped_path);
     
     return lkl_sys_mkdir(remapped_path, mode);
 }
 
+/*
+char *getwd(char *buf, ...) {
+
+}
+
 int chdir(const char *path) {
 
     char remapped_path[PATH_MAX];
 
-    fprintf(stderr, "PRELOAD: chdir %s\n", path);
+    DEBUGMSG(stderr, "PRELOAD: chdir %s\n", path);
 
     lkl_preload_remap_path(path, remapped_path);
 
     return lkl_sys_chdir(remapped_path);
 
 }
+*/
