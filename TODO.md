@@ -1,0 +1,2 @@
+- sort out licensing
+- add travis-ci testing

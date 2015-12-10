@@ -54,7 +54,7 @@ void lkl_preload_init() {
     int (*orig_open)(const char *, int, ...) = dlsym(RTLD_NEXT, "open");
     long ret;
 
-    DEBUGMSG(stderr, "PRELOAD: lkl_preload_init \n");
+    DEBUGMSG(stderr, "PRELOAD: lkl_preload_init\n");
 
     if (NULL == disk) {
         disk = "./disk.img";
