@@ -1,2 +1,4 @@
 - sort out licensing
 - add travis-ci testing
+- add .gitignore
+- add README
