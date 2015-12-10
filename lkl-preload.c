@@ -236,14 +236,90 @@ int close(int fd) {
 }
 
 
-int __fxstat64(int ver, int fd, struct stat64 *buf) {
+int unlink(const char *path) {
+
+    char remapped_path[PATH_MAX];
+
+    DEBUGMSG(stderr, "PRELOAD: unlink %s\n", path);
+
+    lkl_preload_remap_path(path, remapped_path);
+
+    return lkl_sys_unlink(remapped_path);
+
+}
+
+
+int __xstat64(int vers, const char *file, struct stat64 *buf) {
 
     struct lkl_stat lkl_stat;
     int ret;
 
-    printf("PRELOAD: __fxstat64\n");
+    DEBUGMSG(stderr, "PRELOAD: __xstat64\n");
+
+    ret = lkl_sys_stat(file, &lkl_stat);
+
+    buf->st_dev = lkl_stat.st_dev;
+    buf->st_ino = lkl_stat.st_ino;
+    buf->st_mode = lkl_stat.st_mode;
+    buf->st_nlink = lkl_stat.st_nlink;
+    buf->st_uid = lkl_stat.st_uid;
+    buf->st_gid = lkl_stat.st_gid;
+    buf->st_rdev = lkl_stat.st_rdev;
+    buf->st_size = lkl_stat.st_size;
+    buf->st_blksize = lkl_stat.st_blksize;
+    buf->st_blocks = lkl_stat.st_blocks;
+    buf->st_atim.tv_sec = lkl_stat.st_atime;;
+    buf->st_atim.tv_nsec = lkl_stat.st_atime_nsec;
+    buf->st_mtim.tv_sec = lkl_stat.st_mtime;
+    buf->st_mtim.tv_nsec = lkl_stat.st_mtime_nsec;
+    buf->st_ctim.tv_sec = lkl_stat.st_ctime;
+    buf->st_ctim.tv_nsec = lkl_stat.st_ctime_nsec;
+
+    return ret;
+
+}
+
+
+int __fxstat64(int vers, int fd, struct stat64 *buf) {
+
+    struct lkl_stat lkl_stat;
+    int ret;
+
+    DEBUGMSG(stderr, "PRELOAD: __fxstat64\n");
 
     ret = lkl_sys_fstat(fd, &lkl_stat);
+
+    buf->st_dev = lkl_stat.st_dev;
+    buf->st_ino = lkl_stat.st_ino;
+    buf->st_mode = lkl_stat.st_mode;
+    buf->st_nlink = lkl_stat.st_nlink;
+    buf->st_uid = lkl_stat.st_uid;
+    buf->st_gid = lkl_stat.st_gid;
+    buf->st_rdev = lkl_stat.st_rdev;
+    buf->st_size = lkl_stat.st_size;
+    buf->st_blksize = lkl_stat.st_blksize;
+    buf->st_blocks = lkl_stat.st_blocks;
+    buf->st_atim.tv_sec = lkl_stat.st_atime;;
+    buf->st_atim.tv_nsec = lkl_stat.st_atime_nsec;
+    buf->st_mtim.tv_sec = lkl_stat.st_mtime;
+    buf->st_mtim.tv_nsec = lkl_stat.st_mtime_nsec;
+    buf->st_ctim.tv_sec = lkl_stat.st_ctime;
+    buf->st_ctim.tv_nsec = lkl_stat.st_ctime_nsec;
+
+    return ret;
+
+}
+
+
+int __fxstatat64(int vers, int fd, const char *file, struct stat64 *buf, 
+                 int flag) {
+
+    struct lkl_stat lkl_stat;
+    int ret;
+
+    DEBUGMSG(stderr, "PRELOAD: __fxstatat64\n");
+
+    ret = lkl_sys_fstatat(fd, file, &lkl_stat, flag);
 
     buf->st_dev = lkl_stat.st_dev;
     buf->st_ino = lkl_stat.st_ino;
