@@ -166,11 +166,16 @@ void lkl_preload_remap_path(const char *path, char *remapped_path) {
 
     ret = realpath(path, resolved_path);
 
+    // FIXME: deliberately just using path here...
+    strcpy(resolved_path, path);
+
     if (!fnmatch("/dev/*", resolved_path, FNM_PATHNAME) ||
         !fnmatch("/sys/*", resolved_path, FNM_PATHNAME)) {
         snprintf(remapped_path, sizeof(char) * PATH_MAX, "%s", resolved_path);
     } else {
-        snprintf(remapped_path, sizeof(char) * PATH_MAX, "%s/%s", mpoint, resolved_path+1);
+        int i = 0;
+        while ('/' == resolved_path[i]) i++;
+        snprintf(remapped_path, sizeof(char) * PATH_MAX, "%s/%s", mpoint, resolved_path+i);
     }
 
     fprintf(stderr, "PRELOAD: lkl_preload_remap_path %s %s\n", path, remapped_path);
@@ -321,21 +326,15 @@ off64_t lseek64(int fd, off64_t offset, int whence) {
 
 DIR *opendir(const char *path) {
     
-    char fullpath[PATH_MAX];
+    char remapped_path[PATH_MAX];
     DIR *dir;
     int err;
 
     fprintf(stderr, "PRELOAD: opendir %s\n", path);
 
-    if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
-        !fnmatch("/sys/*", path, FNM_PATHNAME)) {
-        snprintf(fullpath, sizeof(fullpath), "%s", path);
-    } else {
-        while('/' == *path) path++;
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", mpoint, path);
-    }
- 
-    dir = (DIR *)lkl_opendir(fullpath, &err);
+    lkl_preload_remap_path(path, remapped_path);
+
+    dir = (DIR *)lkl_opendir(remapped_path, &err);
     if (NULL == dir) {
         errno = err;
     }
@@ -366,35 +365,23 @@ struct dirent64 *readdir64(DIR *dirp) {
 
 int mkdir(const char *path, mode_t mode) {
 
-    char fullpath[PATH_MAX];
+    char remapped_path[PATH_MAX];
 
     fprintf(stderr, "PRELOAD: mkdir %s\n", path);
+
+    lkl_preload_remap_path(path, remapped_path);
     
-    if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
-        !fnmatch("/sys/*", path, FNM_PATHNAME)) {
-        snprintf(fullpath, sizeof(fullpath), "%s", path);
-    } else {
-        while('/' == *path) path++;
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", mpoint, path);
-    }
- 
-    return lkl_sys_mkdir(fullpath, mode);
+    return lkl_sys_mkdir(remapped_path, mode);
 }
 
 int chdir(const char *path) {
 
-    char fullpath[PATH_MAX];
+    char remapped_path[PATH_MAX];
 
     fprintf(stderr, "PRELOAD: chdir %s\n", path);
 
-    if (!fnmatch("/dev/*", path, FNM_PATHNAME) ||
-        !fnmatch("/sys/*", path, FNM_PATHNAME)) {
-        snprintf(fullpath, sizeof(fullpath), "%s", path);
-    } else {
-        while('/' == *path) path++;
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", mpoint, path);
-    }
- 
-    return lkl_sys_chdir(fullpath);
+    lkl_preload_remap_path(path, remapped_path);
+
+    return lkl_sys_chdir(remapped_path);
 
 }
